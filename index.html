@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Akıllı Kitaplığım v8</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <style>
+        :root {
+            --wood: #3e2723;
+            --shelf-shadow: #1b110f;
+            --accent: #ffb74d;
+            --bg: #121212;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--bg);
+            margin: 0;
+            color: white;
+            touch-action: pan-y;
+        }
+
+        .admin-panel {
+            background: #1f1f1f;
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            align-items: center;
+        }
+
+        .input-box {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background: #333;
+            color: white;
+            font-size: 16px;
+        }
+
+        .btn-ui {
+            padding: 12px 18px;
+            border-radius: 8px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .add-btn { background: var(--accent); color: #000; }
+        .scan-btn { background: #0288d1; color: white; }
+
+        .counter-badge {
+            background: #333;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 13px;
+        }
+
+        /* Barkod Tarayıcı Geliştirmesi */
+        #scanner-container {
+            display: none;
+            width: 100%;
+            height: 350px;
+            background: black;
+            position: relative;
+            overflow: hidden;
+            border-bottom: 3px solid var(--accent);
+        }
+        #scanner-container video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Tarama Çizgisi */
+        .scanner-laser {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            width: 80%;
+            height: 2px;
+            background: red;
+            box-shadow: 0 0 10px red;
+            z-index: 10;
+            animation: scanAnim 2s infinite;
+        }
+
+        @keyframes scanAnim {
+            0% { top: 20%; }
+            50% { top: 80%; }
+            100% { top: 20%; }
+        }
+
+        /* Kitaplık Yapısı */
+        .library { padding: 20px 10px 100px 10px; display: flex; flex-direction: column; gap: 40px; }
+        .shelf {
+            background: var(--wood);
+            border-bottom: 15px solid var(--shelf-shadow);
+            min-height: 115px;
+            display: flex;
+            align-items: flex-end;
+            padding: 0 10px;
+            flex-wrap: wrap;
+            border-radius: 2px;
+        }
+
+        .book {
+            width: 44px; height: 100px; margin: 0 3px 2px 3px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: bold; color: white; text-align: center;
+            writing-mode: vertical-rl; border-radius: 2px 4px 4px 2px;
+            box-shadow: 3px 0 5px rgba(0,0,0,0.6); background-size: cover;
+            background-position: center; border-left: 3px solid rgba(255,255,255,0.2);
+            position: relative; overflow: hidden; background-color: #5d4037;
+        }
+
+        .book-title-overlay { background: rgba(0,0,0,0.5); width: 100%; padding: 6px 0; }
+
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); z-index: 2000; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: #252525; width: 90%; max-width: 450px; border-radius: 15px; padding: 20px;
+            box-sizing: border-box; border: 1px solid #444; max-height: 90vh; overflow-y: auto;
+        }
+
+        label { color: var(--accent); font-size: 13px; display: block; margin-top: 10px; }
+        textarea, input[type="file"], input[type="color"], .edit-input {
+            width: 100%; background: #333; border: 1px solid #444; color: white;
+            padding: 10px; border-radius: 8px; box-sizing: border-box; margin-top: 5px;
+        }
+
+        .rating { color: gold; font-size: 28px; text-align: center; margin: 10px 0; }
+        .rating span { cursor: pointer; padding: 0 5px; }
+
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-action { flex: 1; padding: 14px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="admin-panel">
+    <input type="text" id="bookTitleInput" class="input-box" placeholder="Kitap Adı Yazın...">
+    <button class="btn-ui add-btn" onclick="addNewBook()">EKLE</button>
+    <button class="btn-ui scan-btn" onclick="toggleScanner()">BARKOD OKUT</button>
+    <div class="counter-badge" id="totalCounter">Kitap: 0</div>
+</div>
+
+<div id="scanner-container">
+    <div class="scanner-laser"></div>
+</div>
+
+<div class="library" id="library">
+    <div class="shelf" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    <div class="shelf" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+    <div class="shelf" ondrop="drop(event)" ondragover="allowDrop(event)"></div>
+</div>
+
+<div id="bookModal" class="modal">
+    <div class="modal-content">
+        <h3 style="margin:0; text-align:center;">Kitap Detayları</h3>
+        <label>Kitap İsmi:</label>
+        <input type="text" id="mEditTitle" class="edit-input">
+        <div class="rating" id="mStars">
+            <span onclick="setRating(1)">★</span><span onclick="setRating(2)">★</span><span onclick="setRating(3)">★</span><span onclick="setRating(4)">★</span><span onclick="setRating(5)">★</span>
+        </div>
+        <label>Görünüm (Renk/Kapak):</label>
+        <div style="display:flex; gap:10px;">
+            <input type="color" id="mColor" onchange="updateVisuals()">
+            <input type="file" id="mFile" accept="image/*" onchange="uploadImage(event)">
+        </div>
+        <label>Alıntı:</label><textarea id="mQuote" rows="2"></textarea>
+        <label>Notlar:</label><textarea id="mNotes" rows="3"></textarea>
+        <div class="modal-btns">
+            <button class="btn-action" style="background:#c62828; color:white;" onclick="deleteBook()">Sil</button>
+            <button class="btn-action" style="background:#2e7d32; color:white;" onclick="saveDetails()">Kayıt Et</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let draggedBook = null;
+    let editingBook = null;
+
+    // --- VERİ SAKLAMA ---
+    window.onload = () => {
+        const savedData = JSON.parse(localStorage.getItem('myLibrary_v7') || '[]');
+        savedData.forEach(data => createBookElement(data));
+        updateCounter();
+    };
+
+    function saveLibrary() {
+        const books = document.querySelectorAll('.book');
+        const dataArray = Array.from(books).map(b => JSON.parse(b.dataset.info));
+        localStorage.setItem('myLibrary_v7', JSON.stringify(dataArray));
+    }
+
+    // --- BARKOD SİSTEMİ (GÜNCELLENDİ) ---
+    function toggleScanner() {
+        const scanner = document.getElementById('scanner-container');
+        if (scanner.style.display === 'block') {
+            Quagga.stop();
+            scanner.style.display = 'none';
+        } else {
+            scanner.style.display = 'block';
+            startScanner();
+        }
+    }
+
+    function startScanner() {
+        Quagga.init({
+            inputStream: {
+                name: "Live",
+                type: "LiveStream",
+                target: document.querySelector('#scanner-container'),
+                constraints: {
+                    facingMode: "environment",
+                    width: { min: 640 },
+                    height: { min: 480 }
+                },
+            },
+            locator: { patchSize: "medium", halfSample: true },
+            decoder: { readers: ["ean_reader", "upc_reader", "ean_8_reader"] },
+            locate: true
+        }, function(err) {
+            if (err) {
+                alert("Kamera hatası! Lütfen HTTPS kullandığınızdan emin olun.");
+                return;
+            }
+            Quagga.start();
+        });
+
+        Quagga.onDetected((result) => {
+            const code = result.codeResult.code;
+            // Yanlış okumaları önlemek için EAN-13 kontrolü (genelde kitaplar 13 hanelidir)
+            if (code.length >= 10) {
+                Quagga.stop();
+                document.getElementById('scanner-container').style.display = 'none';
+                if (navigator.vibrate) navigator.vibrate(200);
+                fetchBookFromISBN(code);
+            }
+        });
+    }
+
+    async function fetchBookFromISBN(isbn) {
+        try {
+            const resp = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+            const data = await resp.json();
+            if (data.items && data.items.length > 0) {
+                const bookInfo = data.items[0].volumeInfo;
+                addNewBook(bookInfo.title);
+            } else {
+                alert("Barkod okundu (" + isbn + ") ama kitap ismi veritabanında bulunamadı.");
+            }
+        } catch (e) {
+            alert("İnternet bağlantısı hatası!");
+        }
+    }
+
+    // --- KİTAP YÖNETİMİ ---
+    function addNewBook(titleOverride) {
+        const title = titleOverride || document.getElementById('bookTitleInput').value;
+        if (!title) return;
+        const data = { title: title, rating: 0, quote: '', notes: '', color: '#5d4037', cover: '' };
+        createBookElement(data);
+        document.getElementById('bookTitleInput').value = '';
+        saveLibrary();
+        updateCounter();
+    }
+
+    function createBookElement(data) {
+        const book = document.createElement('div');
+        book.className = 'book';
+        book.style.backgroundColor = data.color;
+        if(data.cover) book.style.backgroundImage = `url('${data.cover}')`;
+        const text = document.createElement('div');
+        text.className = 'book-title-overlay';
+        text.innerText = data.title;
+        book.appendChild(text);
+        book.dataset.info = JSON.stringify(data);
+        book.onclick = () => openModal(book);
+        
+        const shelves = document.querySelectorAll('.shelf');
+        let target = shelves[0];
+        for(let s of shelves) { if(s.children.length < 12) { target = s; break; } }
+        target.appendChild(book);
+    }
+
+    function openModal(book) {
+        editingBook = book;
+        const data = JSON.parse(book.dataset.info);
+        document.getElementById('mEditTitle').value = data.title;
+        document.getElementById('mQuote').value = data.quote;
+        document.getElementById('mNotes').value = data.notes;
+        document.getElementById('mColor').value = data.color;
+        setRating(data.rating);
+        document.getElementById('bookModal').style.display = 'flex';
+    }
+
+    function saveDetails() {
+        const data = JSON.parse(editingBook.dataset.info);
+        data.title = document.getElementById('mEditTitle').value;
+        data.quote = document.getElementById('mQuote').value;
+        data.notes = document.getElementById('mNotes').value;
+        editingBook.querySelector('.book-title-overlay').innerText = data.title;
+        editingBook.dataset.info = JSON.stringify(data);
+        saveLibrary();
+        document.getElementById('bookModal').style.display = 'none';
+    }
+
+    function updateVisuals() {
+        const color = document.getElementById('mColor').value;
+        editingBook.style.backgroundColor = color;
+        editingBook.style.backgroundImage = '';
+        const data = JSON.parse(editingBook.dataset.info);
+        data.color = color; data.cover = '';
+        editingBook.dataset.info = JSON.stringify(data);
+        saveLibrary();
+    }
+
+    function uploadImage(event) {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            editingBook.style.backgroundImage = `url('${e.target.result}')`;
+            const data = JSON.parse(editingBook.dataset.info);
+            data.cover = e.target.result;
+            editingBook.dataset.info = JSON.stringify(data);
+            saveLibrary();
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function setRating(n) {
+        const stars = document.getElementById('mStars').children;
+        for(let i=0; i<5; i++) stars[i].style.color = i < n ? 'gold' : '#444';
+        const data = JSON.parse(editingBook.dataset.info);
+        data.rating = n;
+        editingBook.dataset.info = JSON.stringify(data);
+    }
+
+    function deleteBook() {
+        if(confirm("Silmek istiyor musunuz?")) {
+            editingBook.remove();
+            saveLibrary();
+            updateCounter();
+            document.getElementById('bookModal').style.display = 'none';
+        }
+    }
+
+    function updateCounter() {
+        document.getElementById('totalCounter').innerText = "Kitap: " + document.querySelectorAll('.book').length;
+    }
+
+    window.onclick = (e) => { if(e.target.className === 'modal') document.getElementById('bookModal').style.display = 'none'; }
+</script>
+</body>
+</html>
